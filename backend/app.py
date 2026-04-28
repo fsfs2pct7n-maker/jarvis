@@ -822,7 +822,47 @@ async def manifest():
 
 @app.get("/sw.js")
 async def service_worker():
-    return FileResponse(str(FRONTEND_DIR / "sw.js"), media_type="application/javascript")
+    resp = FileResponse(str(FRONTEND_DIR / "sw.js"), media_type="application/javascript")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+@app.get("/nuke", response_class=HTMLResponse)
+async def nuke_cache():
+    """One-click page that unregisters all service workers and clears all caches."""
+    return HTMLResponse("""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Jarvis — Cache Nuke</title>
+  <style>
+    body { background: #000008; color: #00d4ff; font-family: monospace;
+           display: flex; flex-direction: column; align-items: center;
+           justify-content: center; height: 100vh; margin: 0; gap: 16px; }
+    #status { font-size: 14px; color: #888; }
+    button { padding: 12px 28px; background: transparent; border: 1px solid #00d4ff;
+             color: #00d4ff; font-family: monospace; font-size: 14px;
+             cursor: pointer; border-radius: 4px; }
+    button:hover { background: rgba(0,212,255,0.1); }
+  </style>
+</head>
+<body>
+  <div style="font-size:22px;letter-spacing:4px;">JARVIS CACHE NUKE</div>
+  <div id="status">Click to wipe service workers and all cached files</div>
+  <button onclick="nuke()">⚡ NUKE &amp; RELOAD</button>
+  <script>
+    async function nuke() {
+      document.getElementById('status').textContent = 'Unregistering service workers...';
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+      document.getElementById('status').textContent = 'Clearing caches...';
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+      document.getElementById('status').textContent = 'Done — redirecting to Jarvis...';
+      setTimeout(() => window.location.href = '/', 800);
+    }
+  </script>
+</body>
+</html>""")
 
 # Serve static frontend files
 if FRONTEND_DIR.exists():

@@ -302,4 +302,11 @@ startBtn.addEventListener('click', window.startJarvis);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // Auto-reload when a new service worker takes over (clears stale cache)
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'SW_UPDATED') {
+      console.log('[SW] New service worker active — reloading for fresh assets');
+      window.location.reload();
+    }
+  });
 }

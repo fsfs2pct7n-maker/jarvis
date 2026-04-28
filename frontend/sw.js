@@ -1,6 +1,6 @@
 // Jarvis Service Worker — offline support + PWA install
 
-const CACHE_NAME = 'jarvis-v3';
+const CACHE_NAME = 'jarvis-v4';
 const STATIC_ASSETS = [
   '/',
   '/static/style.css',
@@ -27,22 +27,31 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Tell all tabs to reload when a new SW takes over
+self.addEventListener('activate', () => {
+  self.clients.matchAll({ type: 'window' }).then(clients => {
+    clients.forEach(client => client.postMessage({ type: 'SW_UPDATED' }));
+  });
+});
+
 self.addEventListener('fetch', (event) => {
-  // Network first for API calls
+  // Skip API and WebSocket — always network
   if (event.request.url.includes('/api/') || event.request.url.includes('/ws')) {
     return;
   }
 
-  // Cache first for static assets
+  // NETWORK FIRST for all assets — cache is fallback only
+  // This ensures hard refresh always gets fresh code
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-        }
-        return response;
-      }).catch(() => cached);
+    fetch(event.request).then((response) => {
+      if (response.ok) {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+      }
+      return response;
+    }).catch(() => {
+      // Network failed — serve from cache (offline fallback)
+      return caches.match(event.request);
     })
   );
 });
