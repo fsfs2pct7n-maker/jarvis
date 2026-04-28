@@ -89,6 +89,49 @@ def init_db():
             success INTEGER DEFAULT 1,
             ran_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- Phase 3+4: Activity & Learning
+
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            input_text TEXT,
+            tool_used TEXT,
+            tool_input TEXT,
+            response_ms INTEGER,
+            tone TEXT DEFAULT 'neutral',
+            hour_of_day INTEGER,
+            day_of_week INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS preferences (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            source TEXT DEFAULT 'inferred',
+            confidence REAL DEFAULT 0.5,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS detected_patterns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pattern_type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            data TEXT,
+            confidence REAL DEFAULT 0.5,
+            occurrence_count INTEGER DEFAULT 1,
+            first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS email_importance (
+            message_id TEXT PRIMARY KEY,
+            sender TEXT,
+            subject TEXT,
+            importance_score REAL DEFAULT 0.5,
+            action_required INTEGER DEFAULT 0,
+            scored_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
     conn.commit()

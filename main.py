@@ -46,6 +46,7 @@ def startup():
         ("memory processor", "backend.jobs.memory_processor.start_memory_processor"),
         ("briefing",         "backend.jobs.briefing.start_briefing_scheduler"),
         ("proactive",        "backend.jobs.proactive.start_proactive_engine"),
+        ("pattern engine",   "backend.jobs.pattern_job.start_pattern_engine"),
     ]:
         try:
             mod, fn_name = fn.rsplit(".", 1)

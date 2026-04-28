@@ -398,6 +398,100 @@ JARVIS_TOOLS = [
             },
             "required": ["action"]
         }
+    },
+
+    # ── Phase 3+4 tools ──────────────────────────────────────────────────────
+
+    {
+        "name": "summarize",
+        "description": (
+            "Summarize an email thread, document, meeting notes, or any content. "
+            "Use when Owen says 'summarize', 'give me a summary', 'what does this say', "
+            "'triage my inbox', 'summarize my emails'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content_type": {
+                    "type": "string",
+                    "description": "email_thread | document | meeting | general"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The raw text to summarize (optional if source is provided)"
+                },
+                "source": {
+                    "type": "string",
+                    "description": "Email search query or file path to fetch content from"
+                },
+                "depth": {
+                    "type": "string",
+                    "description": "brief (2-3 sentences) | normal (1 paragraph) | detailed (key points + actions)"
+                }
+            },
+            "required": ["content_type"]
+        }
+    },
+
+    {
+        "name": "get_insights",
+        "description": (
+            "Show behavioral patterns, optimization suggestions, and learned preferences. "
+            "Use when Owen says 'what have you learned', 'show my patterns', "
+            "'how do I use Jarvis', 'optimize my workflow', 'what should I improve'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "description": "patterns | suggestions | stats | email_scores | all"
+                }
+            },
+            "required": ["type"]
+        }
+    },
+
+    {
+        "name": "set_preference",
+        "description": (
+            "Set or update a user preference explicitly. "
+            "Use when Owen says 'always give me brief answers', 'enable focus mode', "
+            "'set my briefing time to 9am', 'I prefer detailed responses'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Preference key: response_length | response_style | focus_mode | briefing_time | email_detail"
+                },
+                "value": {
+                    "type": "string",
+                    "description": "The value to set"
+                }
+            },
+            "required": ["key", "value"]
+        }
+    },
+
+    {
+        "name": "score_emails",
+        "description": (
+            "Score recent emails for importance and urgency. Identify which need immediate action. "
+            "Use when Owen says 'which emails are important', 'what needs my attention', "
+            "'prioritize my inbox', 'any urgent emails'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "How many recent emails to score (default 10)"
+                }
+            },
+            "required": []
+        }
     }
 ]
 
@@ -428,6 +522,11 @@ TOOL_ACKS = {
     "search_drive":        "Searching Drive.",
     "unified_search":      "Searching everywhere.",
     "manage_automation":   "On it.",
+    # Phase 3+4
+    "summarize":           "Summarizing.",
+    "get_insights":        "Analyzing your patterns.",
+    "set_preference":      "Got it, updating your preferences.",
+    "score_emails":        "Scoring your inbox.",
 }
 
 

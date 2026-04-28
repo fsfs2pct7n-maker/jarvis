@@ -113,6 +113,7 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
       2. If tool use detected: speak ack immediately, execute tool, stream follow-up
       3. DB writes happen after speech is already underway
     """
+    import time as _time
     from backend.brain.claude import get_brain, TOOL_ACKS
     from backend.brain.router import execute_tool
     from backend.brain.prompts import get_system_prompt
@@ -120,8 +121,13 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
                                         get_conversation_history)
     from backend.jobs.memory_processor import queue_conversation
     from backend.audio.text_to_speech import new_token, StreamingSpeaker, extract_sentences
+    from backend.brain.activity import log_interaction, detect_tone
+    from backend.brain.context import get_context
+    from backend.brain.preferences import build_preference_block
 
     brain = get_brain()
+    _t0   = _time.monotonic()
+    ctx   = get_context()
 
     if not brain.is_ready():
         fallback = "API key not configured. Add ANTHROPIC_API_KEY to the .env file."
@@ -129,11 +135,24 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
             await websocket.send_json({"type": "response", "text": fallback})
         return fallback
 
-    memories = get_relevant_memories(text)
-    history  = get_conversation_history(session_id)
+    # ── Context + preference tracking ────────────────────────
+    tone = detect_tone(text)
+    ctx.record_topic(text)
+    ctx.update_tone(tone)
+
+    memories        = get_relevant_memories(text)
+    history         = get_conversation_history(session_id)
+    context_block   = ctx.build_context_block()
+    preference_block = build_preference_block()
+    tone_hint       = ctx.tone_instruction()
+
     save_conversation(session_id, "user", text)
 
-    system_prompt = get_system_prompt(memory_block=memories)
+    system_prompt = get_system_prompt(
+        memory_block=memories,
+        context_block=context_block + (f"\n  Tone hint: {tone_hint}" if tone_hint else ""),
+        preference_block=preference_block,
+    )
     messages = list(history)[-10:] + [{"role": "user", "content": text}]
 
     # Mint cancellation token and start the streaming speaker NOW — audio can
@@ -227,6 +246,18 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
     # Notify UI with complete text — mic stays muted until speaking_done
     if websocket:
         await websocket.send_json({"type": "response", "text": full_text})
+
+    # ── Activity log ─────────────────────────────────────────
+    _response_ms = int((_time.monotonic() - _t0) * 1000)
+    _tool_used   = None
+    _tool_inp    = None
+    if final_msg and final_msg.stop_reason == "tool_use":
+        _tb = [b for b in final_msg.content if b.type == "tool_use"]
+        if _tb:
+            _tool_used = _tb[0].name
+            _tool_inp  = _tb[0].input
+            ctx.record_tool(_tool_used)
+    log_interaction(session_id, text, _tool_used, _tool_inp, _response_ms, tone)
 
     # DB writes — fire and forget
     save_conversation(session_id, "assistant", full_text, model_used="haiku")
@@ -690,6 +721,55 @@ async def automation_log(limit: int = 20):
     ).fetchall()
     conn.close()
     return {"log": [dict(r) for r in rows]}
+
+
+# ─── Phase 3+4: Insights & Preferences ──────────────────────────────────────
+
+@app.get("/api/insights")
+async def get_insights_endpoint(type: str = "all"):
+    from backend.brain.activity import get_activity_stats, get_tool_frequency
+    from backend.brain.insights import get_patterns, generate_optimization_suggestions, get_high_importance_emails
+    return {
+        "stats":       get_activity_stats(days=14),
+        "tools":       get_tool_frequency(days=7),
+        "patterns":    get_patterns(limit=10),
+        "suggestions": generate_optimization_suggestions(),
+        "high_priority_emails": get_high_importance_emails(limit=5),
+    }
+
+
+@app.get("/api/preferences")
+async def get_preferences_endpoint():
+    from backend.brain.preferences import get_all_preferences
+    return {"preferences": get_all_preferences()}
+
+
+@app.post("/api/preferences")
+async def set_preference_endpoint(req: dict):
+    from backend.brain.preferences import set_preference
+    key   = req.get("key", "")
+    value = req.get("value", "")
+    if not key or not value:
+        return {"error": "key and value required"}
+    set_preference(key, value, source="api", confidence=1.0)
+    return {"ok": True, "key": key, "value": value}
+
+
+@app.post("/api/insights/detect-patterns")
+async def detect_patterns_endpoint():
+    from backend.brain.insights import detect_and_store_patterns
+    found = detect_and_store_patterns()
+    return {"patterns_found": len(found), "descriptions": found}
+
+
+@app.get("/api/activity")
+async def activity_endpoint(days: int = 7):
+    from backend.brain.activity import get_activity_stats, get_tool_frequency, get_recent_commands
+    return {
+        "stats":           get_activity_stats(days=days),
+        "top_tools":       get_tool_frequency(days=days),
+        "recent_commands": get_recent_commands(limit=20),
+    }
 
 
 # ─── Phase 2: Unified Search ──────────────────────────────────────────────────
