@@ -197,6 +197,11 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
     if final_msg and final_msg.stop_reason == "tool_use":
         tool_blocks = [b for b in final_msg.content if b.type == "tool_use"]
 
+        # Collect ALL tool results first — Anthropic requires every tool_use
+        # block to have a matching tool_result in the same user message.
+        # (Building tool_messages inside the loop was the bug: each iteration
+        #  overwrote the previous result, leaving n-1 tool_use ids without matches.)
+        tool_results = []
         for tc in tool_blocks:
             # Speak immediate acknowledgement before the tool runs
             if not tool_acked:
@@ -208,18 +213,19 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
 
             print(f"[TOOL] {tc.name} → {tc.input}")
             tool_result = await execute_tool(tc.name, tc.input)
+            tool_results.append({
+                "type":        "tool_result",
+                "tool_use_id": tc.id,
+                "content":     str(tool_result),
+            })
 
-            # Build messages with tool results injected
-            tool_messages = (
-                list(history)[-6:]
-                + [{"role": "user",      "content": text}]
-                + [{"role": "assistant", "content": final_msg.content}]
-                + [{"role": "user",      "content": [{
-                    "type":        "tool_result",
-                    "tool_use_id": tc.id,
-                    "content":     str(tool_result),
-                }]}]
-            )
+        # Build tool_messages once — with ALL results in a single user turn
+        tool_messages = (
+            list(history)[-6:]
+            + [{"role": "user",      "content": text}]
+            + [{"role": "assistant", "content": final_msg.content}]
+            + [{"role": "user",      "content": tool_results}]
+        )
 
         # Stream Haiku's follow-up response
         full_text = ""
