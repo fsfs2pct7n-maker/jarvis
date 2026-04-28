@@ -519,6 +519,166 @@ async def get_alerts():
     return {"alerts": alerts}
 
 
+# ─── Phase 2: Gmail ───────────────────────────────────────────────────────────
+
+@app.get("/api/gmail/unread")
+async def gmail_unread():
+    from backend.tools.gmail import get_gmail_service, _get_email_details
+    service = get_gmail_service()
+    if not service:
+        return {"messages": [], "error": "not_connected"}
+    results = service.users().messages().list(
+        userId='me', maxResults=10, labelIds=['INBOX', 'UNREAD']
+    ).execute()
+    msgs = []
+    for m in results.get('messages', []):
+        detail = service.users().messages().get(
+            userId='me', id=m['id'], format='metadata',
+            metadataHeaders=['From', 'Subject', 'Date']
+        ).execute()
+        headers = {h['name']: h['value'] for h in detail['payload'].get('headers', [])}
+        sender = headers.get('From', '')
+        if '<' in sender:
+            sender = sender.split('<')[0].strip().strip('"')
+        msgs.append({
+            'id': m['id'],
+            'from': sender,
+            'subject': headers.get('Subject', 'No subject'),
+            'date': headers.get('Date', ''),
+            'snippet': detail.get('snippet', ''),
+        })
+    return {"messages": msgs}
+
+
+@app.get("/api/gmail/unread-count")
+async def gmail_unread_count():
+    from backend.tools.gmail import get_gmail_service
+    service = get_gmail_service()
+    if not service:
+        return {"count": 0}
+    results = service.users().messages().list(
+        userId='me', q='is:unread', maxResults=1
+    ).execute()
+    return {"count": results.get('resultSizeEstimate', 0)}
+
+
+@app.get("/api/gmail/search")
+async def gmail_search(q: str = ""):
+    from backend.tools.gmail import handle_email_request
+    if not q:
+        return {"error": "query required"}
+    result = handle_email_request(action="search", query=q, limit=10)
+    return {"result": result}
+
+
+class SendEmailRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+
+@app.post("/api/gmail/send")
+async def gmail_send(req: SendEmailRequest):
+    from backend.tools.gmail import send_email
+    result = send_email(to=req.to, subject=req.subject, body=req.body)
+    return {"result": result}
+
+
+# ─── Phase 2: Drive ───────────────────────────────────────────────────────────
+
+@app.get("/api/drive/search")
+async def drive_search(q: str = ""):
+    from backend.tools.drive import handle_drive_request
+    if not q:
+        return {"error": "query required"}
+    result = handle_drive_request(action="search", query=q)
+    return {"result": result}
+
+
+@app.get("/api/drive/recent")
+async def drive_recent(limit: int = 10):
+    from backend.tools.drive import get_recent_files_raw
+    files = get_recent_files_raw(limit=limit)
+    return {"files": files}
+
+
+# ─── Phase 2: Automation Rules ────────────────────────────────────────────────
+
+@app.get("/api/automation/rules")
+async def automation_list():
+    from backend.database import get_db
+    import json
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, name, trigger_type, trigger_config, actions, enabled, run_count, last_run, created_at "
+        "FROM automation_rules ORDER BY id"
+    ).fetchall()
+    conn.close()
+    return {"rules": [{
+        "id": r["id"],
+        "name": r["name"],
+        "trigger_type": r["trigger_type"],
+        "trigger_config": json.loads(r["trigger_config"]),
+        "actions": json.loads(r["actions"]),
+        "enabled": bool(r["enabled"]),
+        "run_count": r["run_count"],
+        "last_run": r["last_run"],
+        "created_at": r["created_at"],
+    } for r in rows]}
+
+
+class AutomationRuleRequest(BaseModel):
+    name: str
+    trigger_type: str
+    trigger_config: dict
+    actions: list
+
+@app.post("/api/automation/rules")
+async def automation_create(req: AutomationRuleRequest):
+    from backend.tools.automation import create_rule
+    result = create_rule(req.name, req.trigger_type, req.trigger_config, req.actions)
+    return {"result": result}
+
+
+@app.delete("/api/automation/rules/{rule_id}")
+async def automation_delete(rule_id: int):
+    from backend.tools.automation import delete_rule
+    result = delete_rule(rule_id)
+    return {"result": result}
+
+
+@app.patch("/api/automation/rules/{rule_id}/toggle")
+async def automation_toggle(rule_id: int, enabled: bool = True):
+    from backend.tools.automation import toggle_rule
+    result = toggle_rule(rule_id, enabled)
+    return {"result": result}
+
+
+@app.get("/api/automation/log")
+async def automation_log(limit: int = 20):
+    from backend.database import get_db
+    import json
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT al.*, ar.name FROM automation_log al "
+        "LEFT JOIN automation_rules ar ON al.rule_id = ar.id "
+        "ORDER BY al.ran_at DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    return {"log": [dict(r) for r in rows]}
+
+
+# ─── Phase 2: Unified Search ──────────────────────────────────────────────────
+
+@app.get("/api/search")
+async def unified_search_endpoint(q: str = "", sources: str = ""):
+    from backend.tools.unified_search import unified_search
+    if not q:
+        return {"error": "query required"}
+    source_list = [s.strip() for s in sources.split(",")] if sources else None
+    result = unified_search(query=q, sources=source_list)
+    return {"result": result}
+
+
 # ─── Google OAuth ─────────────────────────────────────────────────────────────
 
 # Stores state → code_verifier between the two OAuth legs (single-user, in-memory is fine)
@@ -526,7 +686,11 @@ _oauth_pending: dict = {}
 
 GOOGLE_SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.modify',
     'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/drive.readonly',
 ]
 
 def _make_flow():

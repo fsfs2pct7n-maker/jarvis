@@ -92,6 +92,58 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> str:
                 return "\n".join([f"[{r['category']}] {r['value']}" for r in results[:10]])
             return "No memories found for that query."
 
+        # ── Phase 2 ───────────────────────────────────────────────────
+
+        elif tool_name == "send_email":
+            from backend.tools.gmail import send_email
+            return send_email(
+                to=tool_input.get("to", ""),
+                subject=tool_input.get("subject", ""),
+                body=tool_input.get("body", ""),
+            )
+
+        elif tool_name == "create_calendar_event":
+            from backend.tools.calendar import create_event_from_text, create_calendar_event
+            if tool_input.get("text"):
+                return create_event_from_text(tool_input["text"])
+            return create_calendar_event(
+                title=tool_input.get("title", "Event"),
+                start_time=tool_input.get("start_time", ""),
+                duration_minutes=tool_input.get("duration_minutes", 60),
+                description=tool_input.get("description", ""),
+                attendees=tool_input.get("attendees", ""),
+            )
+
+        elif tool_name == "delete_calendar_event":
+            from backend.tools.calendar import delete_calendar_event
+            return delete_calendar_event(tool_input.get("event_id", ""))
+
+        elif tool_name == "search_drive":
+            from backend.tools.drive import handle_drive_request
+            return handle_drive_request(
+                action=tool_input.get("action", "search"),
+                query=tool_input.get("query", ""),
+                limit=tool_input.get("limit", 10),
+            )
+
+        elif tool_name == "unified_search":
+            from backend.tools.unified_search import unified_search
+            return unified_search(
+                query=tool_input.get("query", ""),
+                sources=tool_input.get("sources"),
+            )
+
+        elif tool_name == "manage_automation":
+            from backend.tools.automation import handle_automation_request
+            return handle_automation_request(
+                action=tool_input.get("action", "list"),
+                name=tool_input.get("name", ""),
+                trigger_type=tool_input.get("trigger_type", ""),
+                trigger_config=tool_input.get("trigger_config", {}),
+                actions=tool_input.get("actions", []),
+                rule_id=tool_input.get("rule_id", 0),
+            )
+
         else:
             return f"Unknown tool: {tool_name}"
 

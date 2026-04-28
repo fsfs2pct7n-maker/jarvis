@@ -68,6 +68,27 @@ def init_db():
             value TEXT NOT NULL,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS automation_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            trigger_type TEXT NOT NULL,
+            trigger_config TEXT NOT NULL,
+            actions TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            run_count INTEGER DEFAULT 0,
+            last_run DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS automation_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_id INTEGER NOT NULL,
+            trigger_data TEXT,
+            actions_taken TEXT,
+            success INTEGER DEFAULT 1,
+            ran_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
     conn.commit()

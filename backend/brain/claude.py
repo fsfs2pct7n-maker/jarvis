@@ -242,6 +242,162 @@ JARVIS_TOOLS = [
             },
             "required": ["query"]
         }
+    },
+
+    # ── Phase 2: Gmail send ───────────────────────────────
+    {
+        "name": "send_email",
+        "description": "Send an email from Owen's Gmail account.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "type": "string",
+                    "description": "Recipient email address"
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Email subject line"
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Email body text"
+                }
+            },
+            "required": ["to", "subject", "body"]
+        }
+    },
+
+    # ── Phase 2: Calendar create/delete ───────────────────
+    {
+        "name": "create_calendar_event",
+        "description": "Create a new event on Owen's Google Calendar. Use natural language like 'Meeting with John tomorrow at 2pm' or provide explicit start_time in ISO format.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "Natural language description, e.g. 'Team standup tomorrow at 9am for 30 minutes'"
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Event title (used when start_time is provided)"
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": "ISO format datetime, e.g. '2025-05-01T14:00:00'"
+                },
+                "duration_minutes": {
+                    "type": "integer",
+                    "description": "Event duration in minutes (default 60)"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Event description or notes"
+                },
+                "attendees": {
+                    "type": "string",
+                    "description": "Comma-separated email addresses to invite"
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "delete_calendar_event",
+        "description": "Delete a calendar event by its ID. Get the ID from read_calendar first.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "event_id": {
+                    "type": "string",
+                    "description": "Google Calendar event ID"
+                }
+            },
+            "required": ["event_id"]
+        }
+    },
+
+    # ── Phase 2: Google Drive ─────────────────────────────
+    {
+        "name": "search_drive",
+        "description": "Search Owen's Google Drive for files and documents.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "File name or keyword to search for"
+                },
+                "action": {
+                    "type": "string",
+                    "description": "search (find by name) or recent (most recently modified files)"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of results (default 10)"
+                }
+            },
+            "required": []
+        }
+    },
+
+    # ── Phase 2: Unified Search ───────────────────────────
+    {
+        "name": "unified_search",
+        "description": "Search across all of Owen's services at once — Gmail, Drive, local files, and Notes. Use when Owen asks to 'find' something without specifying where.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "What to search for"
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Which sources to search: gmail, drive, files, notes. Omit to search all."
+                }
+            },
+            "required": ["query"]
+        }
+    },
+
+    # ── Phase 2: Automation Rules ─────────────────────────
+    {
+        "name": "manage_automation",
+        "description": "Create, list, or delete automation rules. Rules run automatically when triggered (e.g. 'alert me when I get email from X', 'open Spotify every morning').",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "list, create, delete, enable, disable"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Rule name (for create)"
+                },
+                "trigger_type": {
+                    "type": "string",
+                    "description": "email, keyword, time, startup"
+                },
+                "trigger_config": {
+                    "type": "object",
+                    "description": "Trigger config e.g. {from: 'boss@co.com'} or {keyword: 'urgent'}"
+                },
+                "actions": {
+                    "type": "array",
+                    "description": "List of actions e.g. [{type: 'notify', message: 'Boss emailed you'}]",
+                    "items": {"type": "object"}
+                },
+                "rule_id": {
+                    "type": "integer",
+                    "description": "Rule ID (for delete/enable/disable)"
+                }
+            },
+            "required": ["action"]
+        }
     }
 ]
 
@@ -251,19 +407,27 @@ SONNET_MODEL = "claude-sonnet-4-20250514"
 
 # Immediate acknowledgement phrases for tool calls (before result arrives)
 TOOL_ACKS = {
-    "screen_vision":  "Looking at your screen.",
-    "read_email":     "Checking your email.",
-    "read_messages":  "Checking your messages.",
-    "read_calendar":  "Looking at your calendar.",
-    "search_files":   "Searching your files.",
-    "web_search":     "Searching.",
-    "mac_control":    "On it.",
-    "create_note":    "Got it.",
-    "create_reminder":"Done.",
-    "read_notes":     "Checking your notes.",
-    "read_reminders": "Checking your reminders.",
-    "spawn_build":    "On it, spinning up the build.",
-    "get_memory":     "Let me think.",
+    # Phase 1
+    "screen_vision":       "Looking at your screen.",
+    "read_email":          "Checking your email.",
+    "read_messages":       "Checking your messages.",
+    "read_calendar":       "Looking at your calendar.",
+    "search_files":        "Searching your files.",
+    "web_search":          "Searching.",
+    "mac_control":         "On it.",
+    "create_note":         "Got it.",
+    "create_reminder":     "Done.",
+    "read_notes":          "Checking your notes.",
+    "read_reminders":      "Checking your reminders.",
+    "spawn_build":         "On it, spinning up the build.",
+    "get_memory":          "Let me think.",
+    # Phase 2
+    "send_email":          "Sending that now.",
+    "create_calendar_event": "Adding that to your calendar.",
+    "delete_calendar_event": "Deleting that event.",
+    "search_drive":        "Searching Drive.",
+    "unified_search":      "Searching everywhere.",
+    "manage_automation":   "On it.",
 }
 
 
