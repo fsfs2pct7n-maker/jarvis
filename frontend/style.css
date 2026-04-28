@@ -1,0 +1,404 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --cyan:   #00d4ff;
+  --cyan2:  #00aadd;
+  --bg:     #000008;
+  --text:   #c8e8f0;
+  --dim:    rgba(0,212,255,0.25);
+  --glow:   rgba(0,212,255,0.5);
+}
+
+html, body {
+  width: 100%; height: 100%;
+  /* Respect iOS notch / home indicator */
+  min-height: -webkit-fill-available;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Canvas ── */
+#orb-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+#orb-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* ── Top bar ── */
+#top-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  /* Push below iOS status bar */
+  padding-top: env(safe-area-inset-top, 0px);
+  height: calc(48px + env(safe-area-inset-top, 0px));
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding-left: 20px;
+  padding-right: 20px;
+  padding-bottom: 8px;
+  z-index: 10;
+  background: linear-gradient(to bottom, rgba(0,0,8,0.8) 0%, transparent 100%);
+}
+.logo-j {
+  width: 28px; height: 28px;
+  border: 1.5px solid var(--cyan);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px; font-weight: 700;
+  color: var(--cyan);
+  box-shadow: 0 0 10px var(--glow);
+  line-height: 28px;
+  text-align: center;
+}
+.logo-text {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 5px;
+  color: var(--cyan);
+  text-shadow: 0 0 16px var(--glow);
+  font-family: 'Rajdhani', sans-serif;
+}
+/* ── Mic status indicator ── */
+#mic-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  cursor: default;
+}
+#mic-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: block;
+  flex-shrink: 0;
+}
+#mic-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+}
+.mic-off      { background: #444; }
+.mic-off + #mic-label      { color: #444; }
+.mic-watching { background: #00ff88; box-shadow: 0 0 6px rgba(0,255,136,.6); animation: micPulse 2.5s ease-in-out infinite; }
+.mic-watching + #mic-label { color: #00ff88; }
+.mic-active   { background: #00ffcc; box-shadow: 0 0 10px rgba(0,255,204,.8); }
+.mic-active + #mic-label   { color: #00ffcc; }
+.mic-error    { background: #ff4444; }
+.mic-error + #mic-label    { color: #ff4444; }
+
+#status-link {
+  margin-left: 10px;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+#conn-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: block;
+}
+.dot-online  { background: var(--cyan); box-shadow: 0 0 6px var(--glow); animation: blink 2s infinite; }
+.dot-offline { background: #444; }
+
+/* ── Status label ── */
+#status-label {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(-50% + 140px));
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: rgba(0,212,255,0.5);
+  z-index: 10;
+  pointer-events: none;
+  transition: color 0.4s, opacity 0.4s;
+}
+#status-label.active { color: var(--cyan); text-shadow: 0 0 10px var(--glow); }
+
+/* ── Message overlay ── */
+#msg-overlay {
+  position: fixed;
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  left: 0; right: 0;
+  max-height: 55vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 20px;
+  z-index: 10;
+  pointer-events: none;
+  overflow: hidden;
+}
+#msg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: 55vh;
+  pointer-events: all;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+#msg-list::-webkit-scrollbar { display: none; }
+
+.msg {
+  max-width: 680px;
+  padding: 10px 14px;
+  border-radius: 3px;
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 400;
+  animation: msgIn 0.25s ease;
+}
+.msg.user {
+  align-self: flex-end;
+  background: rgba(0,212,255,0.08);
+  border: 1px solid rgba(0,212,255,0.18);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+}
+.msg.assistant {
+  align-self: flex-start;
+  background: rgba(255,255,255,0.03);
+  border-left: 2px solid var(--cyan);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+}
+.msg.alert {
+  align-self: flex-start;
+  background: rgba(255,170,0,0.06);
+  border-left: 2px solid #ffaa00;
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+}
+
+/* ── Thinking dots ── */
+.thinking {
+  display: flex; gap: 5px;
+  padding: 12px 14px;
+  align-self: flex-start;
+  background: rgba(255,255,255,0.03);
+  border-left: 2px solid var(--cyan);
+  border-radius: 3px;
+  animation: msgIn 0.2s ease;
+}
+.thinking span {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--cyan);
+  animation: dot 1.2s infinite;
+}
+.thinking span:nth-child(2) { animation-delay: .2s; }
+.thinking span:nth-child(3) { animation-delay: .4s; }
+
+/* ── Input bar ── */
+#input-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  /* Sit above iOS home indicator */
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  padding-left: calc(16px + env(safe-area-inset-left, 0px));
+  padding-right: calc(16px + env(safe-area-inset-right, 0px));
+  padding-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(to top, rgba(0,0,8,0.98) 0%, rgba(0,0,8,0.6) 100%);
+  z-index: 20;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+#voice-btn {
+  flex-shrink: 0;
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0,212,255,0.4);
+  background: transparent;
+  color: var(--cyan);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+#voice-btn svg { width: 20px; height: 20px; }
+#voice-btn:hover { background: var(--dim); border-color: var(--cyan); }
+#voice-btn.active {
+  background: var(--cyan);
+  color: #000;
+  border-color: var(--cyan);
+  box-shadow: 0 0 24px var(--glow);
+  animation: vPulse 1s infinite;
+}
+
+#text-input {
+  flex: 1;
+  height: 48px;
+  background: rgba(0,212,255,0.05);
+  border: 1px solid rgba(0,212,255,0.15);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  padding: 0 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  /* Prevent iOS zooming on focus */
+  font-size: max(16px, 1em);
+}
+#text-input:focus { border-color: rgba(0,212,255,0.5); }
+#text-input::placeholder { color: rgba(0,212,255,0.25); font-style: italic; }
+
+#send-btn {
+  flex-shrink: 0;
+  width: 48px; height: 48px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,212,255,0.2);
+  background: transparent;
+  color: var(--cyan);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+#send-btn svg { width: 18px; height: 18px; }
+#send-btn:hover { background: var(--dim); border-color: var(--cyan); }
+
+/* ── iOS Add to Home Screen prompt ── */
+#ios-prompt {
+  position: fixed;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  left: 16px; right: 16px;
+  background: rgba(0,10,20,0.92);
+  border: 1px solid rgba(0,212,255,0.25);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(0,212,255,0.8);
+  font-family: 'Share Tech Mono', monospace;
+  z-index: 30;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: msgIn 0.3s ease;
+}
+#ios-prompt svg { flex-shrink: 0; stroke: var(--cyan); }
+#ios-dismiss {
+  margin-left: auto; flex-shrink: 0;
+  background: none; border: none;
+  color: rgba(0,212,255,0.4); font-size: 14px; cursor: pointer;
+  padding: 4px;
+}
+
+/* ── Animations ── */
+@keyframes blink    { 0%,100%{opacity:1} 50%{opacity:0.3} }
+@keyframes micPulse { 0%,100%{opacity:1;box-shadow:0 0 6px rgba(0,255,136,.6)} 50%{opacity:0.6;box-shadow:0 0 12px rgba(0,255,136,.3)} }
+@keyframes dot    { 0%,80%,100%{opacity:.2;transform:scale(.8)} 40%{opacity:1;transform:scale(1)} }
+@keyframes msgIn  { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+@keyframes vPulse { 0%,100%{box-shadow:0 0 16px var(--glow)} 50%{box-shadow:0 0 32px var(--glow),0 0 60px rgba(0,212,255,.15)} }
+
+/* ── Mobile ── */
+@media (max-width: 500px) {
+  #status-label { font-size: 10px; letter-spacing: 3px; }
+  .msg { font-size: 14px; }
+  #msg-overlay { padding: 0 12px; }
+}
+
+/* ── Landscape on small phones ── */
+@media (max-height: 500px) {
+  #status-label { display: none; }
+  #msg-overlay { max-height: 40vh; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ── START JARVIS overlay ── */
+#start-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.6s ease;
+}
+#start-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+#start-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  padding: 40px 20px;
+}
+.start-logo {
+  width: 72px; height: 72px;
+  border: 2px solid var(--cyan);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 28px; font-weight: 700;
+  color: var(--cyan);
+  box-shadow: 0 0 30px var(--glow), 0 0 60px rgba(0,212,255,.15);
+  animation: startPulse 3s ease-in-out infinite;
+}
+.start-title {
+  font-size: 28px; font-weight: 700;
+  letter-spacing: 10px;
+  color: var(--cyan);
+  text-shadow: 0 0 20px var(--glow);
+  font-family: 'Rajdhani', sans-serif;
+}
+.start-sub {
+  font-size: 12px; letter-spacing: 3px;
+  color: rgba(0,212,255,.4);
+  font-family: 'Share Tech Mono', monospace;
+}
+#start-btn {
+  margin-top: 20px;
+  padding: 16px 48px;
+  border: 2px solid var(--cyan);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cyan);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 18px; font-weight: 700;
+  letter-spacing: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 0 20px rgba(0,212,255,.15);
+  -webkit-tap-highlight-color: transparent;
+}
+#start-btn:hover, #start-btn:active {
+  background: rgba(0,212,255,.12);
+  box-shadow: 0 0 40px rgba(0,212,255,.3);
+  transform: scale(1.02);
+}
+#start-status {
+  font-size: 11px; letter-spacing: 2px;
+  color: rgba(0,212,255,.35);
+  font-family: 'Share Tech Mono', monospace;
+  min-height: 16px;
+  transition: color 0.3s;
+}
+#start-status.ok  { color: #00ff88; }
+#start-status.err { color: #ff6060; }
+@keyframes startPulse {
+  0%,100% { box-shadow: 0 0 20px var(--glow); }
+  50%      { box-shadow: 0 0 40px var(--glow), 0 0 80px rgba(0,212,255,.2); }
+}

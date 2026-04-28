@@ -1,0 +1,32 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Environment & secrets
+.env
+*.pickle
+gmail_token.pickle
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+logs/
+*.log
+
+# Node
+node_modules/
+
+# macOS
+.DS_Store
+
+# Whisper cache
+.cache/

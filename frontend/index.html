@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Jarvis">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#000008">
+  <title>JARVIS</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- ── START JARVIS overlay (shown until mic + WS are active) ── -->
+  <div id="start-overlay">
+    <div id="start-card">
+      <div class="start-logo">J</div>
+      <div class="start-title">JARVIS</div>
+      <div class="start-sub">Personal AI — Owen Medley</div>
+      <button id="start-btn">START JARVIS</button>
+      <div id="start-status">tap to activate microphone</div>
+    </div>
+  </div>
+
+  <!-- Full-screen orb canvas -->
+  <div id="orb-wrap">
+    <canvas id="orb-canvas"></canvas>
+  </div>
+
+  <!-- Status label -->
+  <div id="status-label">STANDBY</div>
+
+  <!-- Message overlay -->
+  <div id="msg-overlay">
+    <div id="msg-list"></div>
+  </div>
+
+  <!-- Bottom input bar -->
+  <div id="input-bar">
+    <button id="voice-btn" title="Tap to speak">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </button>
+    <input id="text-input" type="text" placeholder="Ask Jarvis..." autocomplete="off"
+           spellcheck="false" autocorrect="off" autocapitalize="off"/>
+    <button id="send-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="22" y1="2" x2="11" y2="13"/>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Top bar -->
+  <div id="top-bar">
+    <span class="logo-j">J</span>
+    <span class="logo-text">JARVIS</span>
+    <!-- Mic status indicator -->
+    <div id="mic-status" title="Microphone status">
+      <span id="mic-dot" class="mic-off"></span>
+      <span id="mic-label">MIC OFF</span>
+    </div>
+    <a href="/status" id="status-link">
+      <span id="conn-dot" class="dot-offline"></span>
+    </a>
+  </div>
+
+  <!-- iOS Add to Home Screen prompt -->
+  <div id="ios-prompt" style="display:none">
+    <span>Install: tap</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+      <polyline points="16 6 12 2 8 6"/>
+      <line x1="12" y1="2" x2="12" y2="15"/>
+    </svg>
+    <span>then "Add to Home Screen"</span>
+    <button id="ios-dismiss">✕</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="/static/orb.js"></script>
+  <script src="/static/app.js"></script>
+  <script src="/static/voice.js"></script>
+  <script>
+    // iOS Add to Home Screen
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isIOS && !window.navigator.standalone && !sessionStorage.getItem('ios-prompt-dismissed')) {
+      const prompt = document.getElementById('ios-prompt');
+      prompt.style.display = 'flex';
+      document.getElementById('ios-dismiss').addEventListener('click', () => {
+        prompt.style.display = 'none';
+        sessionStorage.setItem('ios-prompt-dismissed', '1');
+      });
+    }
+  </script>
+</body>
+</html>
