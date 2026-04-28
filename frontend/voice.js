@@ -14,16 +14,20 @@ if (!SR) {
 // ── Mic indicator ─────────────────────────────────────────
 
 function setMicState(state) {
-  micDot.className  = 'mic-' + state;
-  micLabel.className = '';
-  micLabel.textContent = { off: 'MIC OFF', watching: 'WATCHING', active: 'LISTENING', error: 'MIC DENIED' }[state] || 'MIC OFF';
+  micDot.className   = 'mic-' + state;
+  micLabel.textContent = {
+    off:      'MIC OFF',
+    watching: 'WATCHING',
+    active:   'LISTENING',
+    error:    'MIC DENIED',
+  }[state] || 'MIC OFF';
 }
 
 // ── State ─────────────────────────────────────────────────
 
 let mode         = 'WATCHING';
 let watchRecog   = null;
-let watchRestart = null;  // single pending restart handle
+let watchRestart = null;
 let cmdRecog     = null;
 
 const WAKE_PHRASES = ['hey jarvis', 'jarvis', 'hey, jarvis'];
@@ -32,17 +36,25 @@ function containsWake(text) {
   return WAKE_PHRASES.some(p => text.toLowerCase().includes(p));
 }
 
+// Follow-up duration — reads live from the settings select (via app.js helper)
+function getFollowupDuration() {
+  if (typeof window.getFollowupDuration === 'function') {
+    const d = window.getFollowupDuration();
+    return isNaN(d) ? 15 : d;
+  }
+  return 15;
+}
+
 // ── Wake-word watcher ─────────────────────────────────────
-// Built once, stays running. On stop, restart after 300ms (single timeout).
 
 function startWatcher() {
   if (mode !== 'WATCHING') return;
-  if (watchRecog) return;  // already running
+  if (watchRecog) return;
 
   if (!SR) return;
   watchRecog = new SR();
   watchRecog.continuous     = true;
-  watchRecog.interimResults = false;  // final results only — no rapid-fire events
+  watchRecog.interimResults = false;
   watchRecog.lang           = 'en-US';
 
   watchRecog.onstart = () => {
@@ -52,7 +64,22 @@ function startWatcher() {
   watchRecog.onresult = (e) => {
     if (mode !== 'WATCHING') return;
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      const text = e.results[i][0].transcript;
+      const text = e.results[i][0].transcript.trim();
+      if (!text) continue;
+
+      // Always-listening mode: treat any speech as a command
+      if (window.alwaysListeningMode) {
+        console.log('[JARVIS] Always-listening — sending:', text);
+        stopWatcher();
+        mode = 'WATCHING';  // stays in WATCHING; we skip command recog phase
+        if (window.onVoiceStart)  window.onVoiceStart();
+        if (window.onVoiceResult) window.onVoiceResult(text);
+        if (window.onVoiceEnd)    window.onVoiceEnd();
+        setTimeout(startWatcher, 400);
+        return;
+      }
+
+      // Normal mode: check for wake phrase
       if (containsWake(text)) {
         console.log('[JARVIS] Wake word detected:', text);
         triggerWake();
@@ -66,17 +93,12 @@ function startWatcher() {
     if (mode !== 'WATCHING') return;
     setMicState('off');
     clearTimeout(watchRestart);
-    watchRestart = setTimeout(startWatcher, 300);  // single clean restart
+    watchRestart = setTimeout(startWatcher, 300);
   };
 
   watchRecog.onerror = (e) => {
-    if (e.error === 'not-allowed') {
-      setMicState('error');
-      return;
-    }
-    // aborted intentionally — don't restart
+    if (e.error === 'not-allowed') { setMicState('error'); return; }
     if (e.error === 'aborted') return;
-    // any other error: let onend handle the restart
   };
 
   try {
@@ -96,15 +118,14 @@ function stopWatcher() {
   }
 }
 
-// ── Mute during TTS playback (prevents feedback loop) ────
-// Called when backend sends 'response'. Mic stays off until 'speaking_done'.
+// ── Mute during TTS playback ──────────────────────────────
+
 window.muteDuringSpeech = function () {
-  // Stop everything — watcher, followup, command recog
   stopWatcher();
   if (typeof window.cancelFollowup === 'function') window.cancelFollowup();
   try { cmdRecog && cmdRecog.abort(); } catch (_) {}
   cmdRecog = null;
-  mode = 'WATCHING';   // reset so startFollowup/startWatcher work after speaking_done
+  mode = 'WATCHING';
   setMicState('off');
 };
 
@@ -146,7 +167,7 @@ function startCommandRecog() {
     }
   };
 
-  cmdRecog.onend  = () => { input.value = ''; endCommand(); };
+  cmdRecog.onend   = () => { input.value = ''; endCommand(); };
   cmdRecog.onerror = (e) => {
     if (e.error !== 'no-speech') console.log('[VOICE cmd]', e.error);
     endCommand();
@@ -174,9 +195,8 @@ voiceBtn.addEventListener('click', () => {
   }
 });
 
-// ── Follow-up window (15s hands-free after response) ─────
+// ── Follow-up window ──────────────────────────────────────
 
-const FOLLOWUP_DURATION = 15;
 let followupInterval = null;
 let followupRecog    = null;
 
@@ -200,12 +220,15 @@ window.cancelFollowup = function (returnToStandby = false) {
 window.startFollowup = function () {
   if (mode === 'COMMANDING') return;
 
+  const duration = getFollowupDuration();
+  if (duration === 0) return;  // follow-up disabled in settings
+
   window.cancelFollowup();
   mode = 'FOLLOWUP';
   stopWatcher();
   setMicState('watching');
 
-  let secsLeft = FOLLOWUP_DURATION;
+  let secsLeft = duration;
   if (window.onFollowupTick) window.onFollowupTick(secsLeft);
 
   followupInterval = setInterval(() => {
@@ -236,7 +259,6 @@ window.startFollowup = function () {
 
   followupRecog.onend = () => {
     if (mode === 'FOLLOWUP' && followupRecog) {
-      // Still in window — restart recognition once
       try { followupRecog.start(); } catch (_) {}
     }
   };
@@ -250,7 +272,7 @@ window.startFollowup = function () {
   try { followupRecog.start(); } catch (_) { window.cancelFollowup(true); }
 };
 
-// ── Boot ─────────────────────────────────────────────────
+// ── Boot ──────────────────────────────────────────────────
 
 function waitForWS() {
   if (window._jarvisWS && window._jarvisWS.readyState === WebSocket.OPEN) {

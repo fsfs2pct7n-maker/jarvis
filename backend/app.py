@@ -74,10 +74,22 @@ async def websocket_endpoint(websocket: WebSocket):
             elif payload.get("type") == "voice_activate":
                 await websocket.send_json({"type": "status", "status": "listening"})
 
+            elif payload.get("type") == "interrupt":
+                # User pressed stop — kill audio immediately
+                try:
+                    from backend.audio.text_to_speech import stop_speaking
+                    stop_speaking()
+                except Exception:
+                    pass
+                await websocket.send_json({"type": "speaking_done"})
+                await websocket.send_json({"type": "status", "status": "listening"})
+
     except WebSocketDisconnect:
         connected_clients.discard(websocket)
     except Exception as e:
+        import traceback
         print(f"[WS] Error: {e}")
+        print(f"[WS] Traceback:\n{traceback.format_exc()}")
         connected_clients.discard(websocket)
 
 
@@ -495,6 +507,19 @@ async def status_page():
 </html>"""
 
 
+@app.post("/api/interrupt")
+async def interrupt():
+    """Stop all audio immediately — called by the stop button."""
+    try:
+        from backend.audio.text_to_speech import stop_speaking
+        stop_speaking()
+    except Exception:
+        pass
+    await broadcast_message({"type": "speaking_done"})
+    await broadcast_message({"type": "status", "status": "listening"})
+    return {"ok": True}
+
+
 @app.get("/api/memories")
 async def get_memories():
     from backend.memory.engine import get_all_memories
@@ -726,7 +751,6 @@ async def google_auth():
         auth_url, state = flow.authorization_url(
             prompt='consent',
             access_type='offline',
-            include_granted_scopes='true',
         )
         # Persist the verifier (may be None if PKCE not used by this library version)
         _oauth_pending[state] = getattr(flow, 'code_verifier', None)
@@ -755,18 +779,33 @@ async def google_callback(code: str = "", error: str = "", state: str = ""):
 
         flow.fetch_token(**fetch_kwargs)
 
+        creds = flow.credentials
+        print(f"[OAUTH] Token obtained. Scopes: {creds.scopes}")
+
         with open(TOKEN_PATH, 'wb') as token:
-            pickle.dump(flow.credentials, token)
+            pickle.dump(creds, token)
+
+        print(f"[OAUTH] Token saved to {TOKEN_PATH}")
 
         return HTMLResponse("""
             <html><body style="background:#0a0a0f;color:#00d4ff;font-family:monospace;padding:40px;">
-            <h2>✓ Google connected successfully.</h2>
-            <p>Gmail and Calendar are now active.</p>
-            <script>setTimeout(() => window.close(), 2000)</script>
+            <h2>&#x2713; Google connected successfully.</h2>
+            <p>Gmail, Calendar, and Drive are now active.</p>
+            <p style="color:rgba(0,212,255,.5);font-size:13px;">Redirecting to Jarvis in 2 seconds...</p>
+            <script>setTimeout(() => { window.location.href = '/'; }, 2000);</script>
             </body></html>
         """)
     except Exception as e:
-        return HTMLResponse(f"<h2>OAuth callback error: {e}</h2>")
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[OAUTH] Callback error: {e}\n{tb}")
+        return HTMLResponse(f"""
+            <html><body style="background:#0a0a0f;color:#ff6060;font-family:monospace;padding:40px;">
+            <h2>OAuth callback error</h2>
+            <pre style="color:#ffaaaa;font-size:13px;">{e}</pre>
+            <p><a href="/auth/google" style="color:#00d4ff;">Try again</a></p>
+            </body></html>
+        """)
 
 
 # ─── Static Files + PWA ───────────────────────────────────────────────────────

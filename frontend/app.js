@@ -1,4 +1,4 @@
-// JARVIS v2.0 — Frontend logic
+// JARVIS v3.0 — Frontend logic
 
 const ORB_STATE = { STANDBY: 0, LISTENING: 1, THINKING: 2, SPEAKING: 3, FOLLOWUP: 4 };
 
@@ -7,18 +7,103 @@ let sessionId = null;
 let isConnected = false;
 let thinkingEl = null;
 
-const msgList    = document.getElementById('msg-list');
-const textInput  = document.getElementById('text-input');
-const sendBtn    = document.getElementById('send-btn');
-const statusLbl  = document.getElementById('status-label');
-const connDot    = document.getElementById('conn-dot');
+const msgList   = document.getElementById('msg-list');
+const msgOverlay = document.getElementById('msg-overlay');
+const textInput = document.getElementById('text-input');
+const sendBtn   = document.getElementById('send-btn');
+const stopBtn   = document.getElementById('stop-btn');
+const connDot   = document.getElementById('conn-dot');
+const stateDot  = document.getElementById('state-dot');
+const stateText = document.getElementById('state-text');
+
+// ── Settings panel ────────────────────────────────────────
+
+const settingsBtn      = document.getElementById('settings-btn');
+const settingsPanel    = document.getElementById('settings-panel');
+const settingsBackdrop = document.getElementById('settings-backdrop');
+const alwaysListeningCb = document.getElementById('always-listening-cb');
+const hideCaptionsCb   = document.getElementById('hide-captions-cb');
+const followupDurationSel = document.getElementById('followup-duration-sel');
+
+function openSettings() {
+  settingsPanel.classList.remove('panel-closed');
+  settingsPanel.classList.add('panel-open');
+  settingsBackdrop.classList.add('visible');
+  settingsBtn.classList.add('open');
+}
+
+function closeSettings() {
+  settingsPanel.classList.remove('panel-open');
+  settingsPanel.classList.add('panel-closed');
+  settingsBackdrop.classList.remove('visible');
+  settingsBtn.classList.remove('open');
+}
+
+settingsBtn.addEventListener('click', () => {
+  if (settingsPanel.classList.contains('panel-open')) {
+    closeSettings();
+  } else {
+    openSettings();
+  }
+});
+
+settingsBackdrop.addEventListener('click', closeSettings);
+
+// ── Always-listening toggle ───────────────────────────────
+
+// Restore from localStorage
+alwaysListeningCb.checked = localStorage.getItem('alwaysListening') === '1';
+window.alwaysListeningMode = alwaysListeningCb.checked;
+
+alwaysListeningCb.addEventListener('change', () => {
+  window.alwaysListeningMode = alwaysListeningCb.checked;
+  localStorage.setItem('alwaysListening', alwaysListeningCb.checked ? '1' : '0');
+});
+
+// ── Hide captions toggle ──────────────────────────────────
+
+hideCaptionsCb.checked = localStorage.getItem('hideCaptions') === '1';
+if (hideCaptionsCb.checked) msgOverlay.classList.add('hidden');
+
+hideCaptionsCb.addEventListener('change', () => {
+  if (hideCaptionsCb.checked) {
+    msgOverlay.classList.add('hidden');
+  } else {
+    msgOverlay.classList.remove('hidden');
+  }
+  localStorage.setItem('hideCaptions', hideCaptionsCb.checked ? '1' : '0');
+});
+
+// ── Follow-up duration ────────────────────────────────────
+
+const savedDuration = localStorage.getItem('followupDuration');
+if (savedDuration !== null) followupDurationSel.value = savedDuration;
+
+followupDurationSel.addEventListener('change', () => {
+  localStorage.setItem('followupDuration', followupDurationSel.value);
+});
+
+// Exposed so voice.js can read it
+window.getFollowupDuration = () => parseInt(followupDurationSel.value, 10);
+
+// ── Stop button ───────────────────────────────────────────
+
+stopBtn.addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'interrupt' }));
+  } else {
+    fetch('/api/interrupt', { method: 'POST' }).catch(() => {});
+  }
+  stopBtn.style.display = 'none';
+  setStatus('STANDBY', ORB_STATE.STANDBY);
+});
 
 // ── WebSocket ──────────────────────────────────────────────
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}/ws`);
-  window._jarvisWS = ws;  // exposed for voice.js wake-word sender
+  window._jarvisWS = ws;
 
   ws.onopen = () => {
     isConnected = true;
@@ -39,21 +124,19 @@ function connect() {
         break;
 
       case 'speaking_start':
-        // First audio sentence is queued — mute mic immediately before any sound plays.
         setStatus('SPEAKING', ORB_STATE.SPEAKING);
+        stopBtn.style.display = 'flex';
         if (typeof window.muteDuringSpeech === 'function') window.muteDuringSpeech();
         break;
 
       case 'response':
         hideThinking();
         addMsg('assistant', msg.text);
-        // Mute here too as a safety net for short responses where speaking_start
-        // and response arrive close together.
         if (typeof window.muteDuringSpeech === 'function') window.muteDuringSpeech();
         break;
 
       case 'speaking_done':
-        // Audio playback finished on the Mac — safe to re-open the mic now.
+        stopBtn.style.display = 'none';
         setStatus('STANDBY', ORB_STATE.STANDBY);
         if (typeof window.startFollowup === 'function') window.startFollowup();
         break;
@@ -78,7 +161,8 @@ function connect() {
     isConnected = false;
     window._jarvisWS = null;
     connDot.className = 'dot-offline';
-    setStatus('RECONNECTING...', ORB_STATE.STANDBY);
+    stopBtn.style.display = 'none';
+    setStatus('RECONNECTING', ORB_STATE.STANDBY);
     setTimeout(connect, 3000);
   };
 }
@@ -89,7 +173,6 @@ function send(text) {
   text = text.trim();
   if (!text) return;
   textInput.value = '';
-  // Cancel any active follow-up window — we're starting a new turn
   if (typeof window.cancelFollowup === 'function') window.cancelFollowup();
   addMsg('user', text);
 
@@ -98,7 +181,6 @@ function send(text) {
     setStatus('THINKING', ORB_STATE.THINKING);
     showThinking();
   } else {
-    // REST fallback
     setStatus('THINKING', ORB_STATE.THINKING);
     showThinking();
     fetch('/api/chat', {
@@ -129,7 +211,6 @@ function addMsg(role, text) {
   el.className = `msg ${role}`;
   el.textContent = text;
   msgList.appendChild(el);
-  // Keep last 40 messages
   while (msgList.children.length > 40) msgList.removeChild(msgList.firstChild);
   msgList.scrollTop = msgList.scrollHeight;
 }
@@ -145,15 +226,22 @@ function showThinking() {
 
 function hideThinking() {
   if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
-  // Clean up any lingering tool indicators
   msgList.querySelectorAll('.tool-indicator').forEach(e => e.remove());
 }
 
-// ── Status ────────────────────────────────────────────────
+// ── Status pill ───────────────────────────────────────────
+
+const DOT_CLASS = {
+  [ORB_STATE.STANDBY]:  'standby',
+  [ORB_STATE.LISTENING]:'active',
+  [ORB_STATE.THINKING]: 'active',
+  [ORB_STATE.SPEAKING]: 'speaking',
+  [ORB_STATE.FOLLOWUP]: 'active',
+};
 
 function setStatus(text, orbState) {
-  statusLbl.textContent = text;
-  statusLbl.classList.toggle('active', orbState !== ORB_STATE.STANDBY);
+  stateText.textContent = text;
+  stateDot.className = DOT_CLASS[orbState] || 'dot-standby';
   if (typeof setOrbState === 'function') setOrbState(orbState);
 }
 
@@ -164,12 +252,11 @@ textInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(textInput.value); }
 });
 
-// Notify voice.js when we start/stop listening
+// Callbacks for voice.js
 window.onVoiceStart  = () => setStatus('LISTENING', ORB_STATE.LISTENING);
 window.onVoiceEnd    = () => setStatus('STANDBY',   ORB_STATE.STANDBY);
-window.onVoiceResult = (text) => { send(text); };
+window.onVoiceResult = (text) => send(text);
 
-// Called by voice.js during the follow-up countdown
 window.onFollowupTick = (secsLeft) => {
   setStatus(`FOLLOW UP  ${secsLeft}s`, ORB_STATE.FOLLOWUP);
 };
@@ -177,7 +264,8 @@ window.onFollowupEnd = () => {
   setStatus('STANDBY', ORB_STATE.STANDBY);
 };
 
-// ── START JARVIS overlay ──────────────────────────────────
+// ── Start overlay ─────────────────────────────────────────
+
 const startOverlay = document.getElementById('start-overlay');
 const startBtn     = document.getElementById('start-btn');
 const startStatus  = document.getElementById('start-status');
@@ -187,10 +275,8 @@ window.startJarvis = async function () {
   startStatus.textContent = 'requesting microphone...';
   startStatus.className = '';
 
-  // Request mic permission explicitly — surfaces the browser prompt
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // Stop the test stream immediately; we just needed the permission grant
     stream.getTracks().forEach(t => t.stop());
     startStatus.textContent = 'microphone granted — connecting...';
     startStatus.className = 'ok';
@@ -200,15 +286,10 @@ window.startJarvis = async function () {
     await new Promise(r => setTimeout(r, 1500));
   }
 
-  // Connect WebSocket — once open, hide overlay and start watcher
   connect();
 };
 
 // Hide overlay once WebSocket opens
-const _origOnOpen = ws => {
-  // ws is null until connect() is called — patch via the connect close
-};
-// We intercept ws.onopen inside connect() already; here we watch isConnected
 const _overlayInterval = setInterval(() => {
   if (isConnected) {
     clearInterval(_overlayInterval);

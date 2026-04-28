@@ -6,44 +6,114 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Jarvis">
-  <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#000008">
   <title>JARVIS</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
-  <!-- ── START JARVIS overlay (shown until mic + WS are active) ── -->
+  <!-- ── START overlay ── -->
   <div id="start-overlay">
     <div id="start-card">
-      <div class="start-logo">J</div>
+      <div class="start-orb">
+        <svg viewBox="0 0 60 60" fill="none">
+          <circle cx="30" cy="30" r="28" stroke="#00d4ff" stroke-width="1.5" opacity="0.4"/>
+          <circle cx="30" cy="30" r="20" stroke="#00d4ff" stroke-width="1" opacity="0.6"/>
+          <circle cx="30" cy="30" r="10" fill="#00d4ff" opacity="0.15"/>
+          <text x="30" y="35" text-anchor="middle" fill="#00d4ff" font-size="16" font-family="JetBrains Mono" font-weight="500">J</text>
+        </svg>
+      </div>
       <div class="start-title">JARVIS</div>
       <div class="start-sub">Personal AI — Owen Medley</div>
-      <button id="start-btn">START JARVIS</button>
-      <div id="start-status">tap to activate microphone</div>
+      <button id="start-btn">ACTIVATE</button>
+      <div id="start-status">tap to enable microphone</div>
     </div>
   </div>
 
-  <!-- Full-screen orb canvas -->
-  <div id="orb-wrap">
-    <canvas id="orb-canvas"></canvas>
+  <!-- ── Orb canvas (full screen background) ── -->
+  <canvas id="orb-canvas"></canvas>
+
+  <!-- ── Top bar ── -->
+  <header id="top-bar">
+    <div class="brand">
+      <span class="brand-j">J</span>
+      <span class="brand-name">JARVIS</span>
+    </div>
+    <div class="top-right">
+      <div id="state-pill">
+        <span id="state-dot"></span>
+        <span id="state-text">STANDBY</span>
+      </div>
+      <button id="settings-btn" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="10" cy="10" r="3"/>
+          <path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.22 4.22l1.42 1.42M14.36 14.36l1.42 1.42M4.22 15.78l1.42-1.42M14.36 5.64l1.42-1.42"/>
+        </svg>
+      </button>
+      <a href="/status" id="conn-link" title="System status">
+        <span id="conn-dot"></span>
+      </a>
+    </div>
+  </header>
+
+  <!-- ── Settings panel ── -->
+  <div id="settings-panel" class="panel-closed">
+    <div class="panel-header">Settings</div>
+
+    <label class="setting-row">
+      <div class="setting-info">
+        <span class="setting-name">Always Listening</span>
+        <span class="setting-desc">Respond to any speech, no wake word needed</span>
+      </div>
+      <div class="toggle" id="always-listening-toggle">
+        <input type="checkbox" id="always-listening-cb">
+        <span class="toggle-track"></span>
+      </div>
+    </label>
+
+    <label class="setting-row">
+      <div class="setting-info">
+        <span class="setting-name">Hide Captions</span>
+        <span class="setting-desc">Turn off transcript display</span>
+      </div>
+      <div class="toggle">
+        <input type="checkbox" id="hide-captions-cb">
+        <span class="toggle-track"></span>
+      </div>
+    </label>
+
+    <label class="setting-row">
+      <div class="setting-info">
+        <span class="setting-name">Follow-up Window</span>
+        <span class="setting-desc">Seconds to stay listening after a response</span>
+      </div>
+      <select id="followup-duration-sel" class="setting-select">
+        <option value="8">8s</option>
+        <option value="15" selected>15s</option>
+        <option value="30">30s</option>
+        <option value="0">Off</option>
+      </select>
+    </label>
+
+    <div class="panel-footer">
+      <a href="/status" class="panel-link">System status →</a>
+      <a href="/auth/google" class="panel-link">Google auth →</a>
+    </div>
   </div>
+  <div id="settings-backdrop"></div>
 
-  <!-- Status label -->
-  <div id="status-label">STANDBY</div>
-
-  <!-- Message overlay -->
+  <!-- ── Message list ── -->
   <div id="msg-overlay">
     <div id="msg-list"></div>
   </div>
 
-  <!-- Bottom input bar -->
+  <!-- ── Bottom bar ── -->
   <div id="input-bar">
-    <button id="voice-btn" title="Tap to speak">
+    <button id="voice-btn" title="Tap to speak" aria-label="Voice input">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
         <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
@@ -51,9 +121,15 @@
         <line x1="8" y1="23" x2="16" y2="23"/>
       </svg>
     </button>
-    <input id="text-input" type="text" placeholder="Ask Jarvis..." autocomplete="off"
-           spellcheck="false" autocorrect="off" autocapitalize="off"/>
-    <button id="send-btn">
+    <input id="text-input" type="text" placeholder="Message Jarvis…"
+           autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="sentences"/>
+    <!-- Stop button — only visible when Jarvis is speaking -->
+    <button id="stop-btn" title="Stop" aria-label="Stop speaking" style="display:none">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="6" width="12" height="12" rx="2"/>
+      </svg>
+    </button>
+    <button id="send-btn" title="Send" aria-label="Send">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="22" y1="2" x2="11" y2="13"/>
         <polygon points="22 2 15 22 11 13 2 9 22 2"/>
@@ -61,24 +137,16 @@
     </button>
   </div>
 
-  <!-- Top bar -->
-  <div id="top-bar">
-    <span class="logo-j">J</span>
-    <span class="logo-text">JARVIS</span>
-    <!-- Mic status indicator -->
-    <div id="mic-status" title="Microphone status">
-      <span id="mic-dot" class="mic-off"></span>
-      <span id="mic-label">MIC OFF</span>
-    </div>
-    <a href="/status" id="status-link">
-      <span id="conn-dot" class="dot-offline"></span>
-    </a>
+  <!-- ── Mic indicator (bottom-left of orb) ── -->
+  <div id="mic-badge">
+    <span id="mic-dot" class="mic-off"></span>
+    <span id="mic-label">MIC OFF</span>
   </div>
 
-  <!-- iOS Add to Home Screen prompt -->
+  <!-- ── iOS install prompt ── -->
   <div id="ios-prompt" style="display:none">
     <span>Install: tap</span>
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
       <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
       <polyline points="16 6 12 2 8 6"/>
       <line x1="12" y1="2" x2="12" y2="15"/>
@@ -92,14 +160,13 @@
   <script src="/static/app.js"></script>
   <script src="/static/voice.js"></script>
   <script>
-    // iOS Add to Home Screen
+    // iOS prompt
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    if (isIOS && !window.navigator.standalone && !sessionStorage.getItem('ios-prompt-dismissed')) {
-      const prompt = document.getElementById('ios-prompt');
-      prompt.style.display = 'flex';
+    if (isIOS && !window.navigator.standalone && !sessionStorage.getItem('ios-dismissed')) {
+      document.getElementById('ios-prompt').style.display = 'flex';
       document.getElementById('ios-dismiss').addEventListener('click', () => {
-        prompt.style.display = 'none';
-        sessionStorage.setItem('ios-prompt-dismissed', '1');
+        document.getElementById('ios-prompt').style.display = 'none';
+        sessionStorage.setItem('ios-dismissed', '1');
       });
     }
   </script>
