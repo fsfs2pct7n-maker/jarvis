@@ -166,6 +166,17 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
     tool_acked     = False
     speaking_start_sent = False   # track first-sentence mute signal
 
+    # ── Helper: send to this websocket OR broadcast to all clients ───────────
+    async def _send(msg: dict):
+        """Send to the direct websocket if available, otherwise broadcast."""
+        if websocket:
+            try:
+                await websocket.send_json(msg)
+            except Exception:
+                pass
+        else:
+            await broadcast_message(msg)
+
     # ── Phase 1: stream Haiku ─────────────────────────────
     async for kind, data in brain.stream_chat(messages, system_prompt):
         if kind == "text":
@@ -178,8 +189,8 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
             for s in sentences:
                 speaker.add(s)
                 # Tell browser to mute mic on the very first sentence — audio is starting
-                if websocket and not speaking_start_sent:
-                    await websocket.send_json({"type": "speaking_start"})
+                if not speaking_start_sent:
+                    await _send({"type": "speaking_start"})
                     speaking_start_sent = True
                 if websocket:
                     await websocket.send_json({"type": "stream_chunk", "text": s})
@@ -207,8 +218,7 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
             if not tool_acked:
                 ack = TOOL_ACKS.get(tc.name, "On it.")
                 speaker.add(ack)
-                if websocket:
-                    await websocket.send_json({"type": "tool_use", "tool": tc.name})
+                await _send({"type": "tool_use", "tool": tc.name})
                 tool_acked = True
 
             print(f"[TOOL] {tc.name} → {tc.input}")
@@ -250,8 +260,7 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
         full_text = "Got it."
 
     # Notify UI with complete text — mic stays muted until speaking_done
-    if websocket:
-        await websocket.send_json({"type": "response", "text": full_text})
+    await _send({"type": "response", "text": full_text})
 
     # ── Activity log ─────────────────────────────────────────
     _response_ms = int((_time.monotonic() - _t0) * 1000)
@@ -269,15 +278,13 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
     save_conversation(session_id, "assistant", full_text, model_used="haiku")
     queue_conversation(get_conversation_history(session_id, limit=4))
 
-    # Finish TTS in background; signal the browser when audio actually stops
-    # so the mic only re-opens after Jarvis stops talking (prevents feedback loop)
+    # Finish TTS in background; signal the browser when audio actually stops.
+    # IMPORTANT: _send() must be used here — when called from the Python wake-word
+    # path, websocket=None, so speaking_done was never broadcast. That caused the
+    # mic to stay permanently muted after the first interaction.
     async def _finish_and_signal():
         await asyncio.get_event_loop().run_in_executor(None, speaker.finish)
-        if websocket:
-            try:
-                await websocket.send_json({"type": "speaking_done"})
-            except Exception:
-                pass
+        await _send({"type": "speaking_done"})
 
     asyncio.create_task(_finish_and_signal())
 
