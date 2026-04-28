@@ -54,13 +54,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 text = payload.get("text", "").strip()
                 if text:
                     await websocket.send_json({"type": "status", "status": "thinking"})
-                    response = await process_message(text, session_id, websocket)
-                    await websocket.send_json({
-                        "type": "response",
-                        "text": response,
-                        "session_id": session_id
-                    })
-                    await websocket.send_json({"type": "status", "status": "listening"})
+                    # process_message handles sending response + speaking_start/done
+                    # via its internal _send() helper. Do NOT duplicate those sends here.
+                    await process_message(text, session_id, websocket)
 
             elif payload.get("type") == "wake_word":
                 # Browser detected "Hey Jarvis" — play chime, signal listening state
@@ -279,12 +275,15 @@ async def process_message(text: str, session_id: str, websocket: WebSocket = Non
     queue_conversation(get_conversation_history(session_id, limit=4))
 
     # Finish TTS in background; signal the browser when audio actually stops.
-    # IMPORTANT: _send() must be used here — when called from the Python wake-word
-    # path, websocket=None, so speaking_done was never broadcast. That caused the
-    # mic to stay permanently muted after the first interaction.
+    # try/finally guarantees speaking_done is ALWAYS sent — if speaker.finish()
+    # hangs or throws, the mic would stay permanently muted without this guard.
     async def _finish_and_signal():
-        await asyncio.get_event_loop().run_in_executor(None, speaker.finish)
-        await _send({"type": "speaking_done"})
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, speaker.finish)
+        except Exception as e:
+            print(f"[TTS] speaker.finish error: {e}")
+        finally:
+            await _send({"type": "speaking_done"})
 
     asyncio.create_task(_finish_and_signal())
 

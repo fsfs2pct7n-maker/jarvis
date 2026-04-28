@@ -1,6 +1,6 @@
 // Jarvis Service Worker — offline support + PWA install
 
-const CACHE_NAME = 'jarvis-v4';
+const CACHE_NAME = 'jarvis-v5';
 const STATIC_ASSETS = [
   '/',
   '/static/style.css',

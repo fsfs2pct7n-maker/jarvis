@@ -120,6 +120,8 @@ function stopWatcher() {
 
 // ── Mute during TTS playback ──────────────────────────────
 
+let _speakingWatchdog = null;
+
 window.muteDuringSpeech = function () {
   stopWatcher();
   if (typeof window.cancelFollowup === 'function') window.cancelFollowup();
@@ -127,7 +129,22 @@ window.muteDuringSpeech = function () {
   cmdRecog = null;
   mode = 'WATCHING';
   setMicState('off');
+
+  // Safety watchdog: if speaking_done never arrives, force-restart the watcher
+  // after 45s so the mic doesn't stay dead permanently.
+  clearTimeout(_speakingWatchdog);
+  _speakingWatchdog = setTimeout(() => {
+    if (mode === 'WATCHING' && !watchRecog) {
+      console.warn('[JARVIS] speaking_done watchdog fired — restarting watcher');
+      startWatcher();
+    }
+  }, 45000);
 };
+
+function _clearWatchdog() {
+  clearTimeout(_speakingWatchdog);
+  _speakingWatchdog = null;
+}
 
 // ── Wake trigger ──────────────────────────────────────────
 
@@ -219,9 +236,16 @@ window.cancelFollowup = function (returnToStandby = false) {
 
 window.startFollowup = function () {
   if (mode === 'COMMANDING') return;
+  _clearWatchdog();  // speaking_done arrived — cancel the safety watchdog
 
   const duration = getFollowupDuration();
-  if (duration === 0) return;  // follow-up disabled in settings
+  if (duration === 0) {
+    // Follow-up disabled — go straight back to watching
+    mode = 'WATCHING';
+    setMicState('off');
+    setTimeout(startWatcher, 300);
+    return;
+  }
 
   window.cancelFollowup();
   mode = 'FOLLOWUP';
